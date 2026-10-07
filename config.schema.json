@@ -1,0 +1,48 @@
+{
+  "pluginAlias": "TheaterSequence",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Runs the theater start/stop sequence on this host and confirms each step. Publishes two buttons as Matter outlets (Alexa) and HomeKit switches (iPhone). Secrets live in owner-only files, not in config.json.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": { "title": "Name", "type": "string", "default": "Theater" },
+      "startName": { "title": "Start Button Name", "type": "string", "default": "Theater Start", "maxLength": 32 },
+      "stopName": { "title": "Stop Button Name", "type": "string", "default": "Theater Stop", "maxLength": 32 },
+      "homekit": { "title": "Publish HomeKit Switches", "type": "boolean", "default": true },
+      "projector": {
+        "title": "Projector (Sony ADCP)", "type": "object",
+        "properties": {
+          "host": { "title": "IP Address", "type": "string", "format": "ipv4" },
+          "port": { "title": "ADCP Port", "type": "integer", "default": 53595 },
+          "passwordFile": { "title": "ADCP Password File", "type": "string", "placeholder": "~/.config/theater-sequence/adcp.json", "description": "JSON {\"password\": \"...\"}, chmod 600." }
+        }
+      },
+      "screen": {
+        "title": "Screen (SwitchBot IR, Others)", "type": "object",
+        "properties": {
+          "deviceId": { "title": "IR Remote deviceId", "type": "string" },
+          "downButton": { "title": "Down Button Name", "type": "string" },
+          "upButton": { "title": "Up Button Name", "type": "string" },
+          "credentialsFile": { "title": "SwitchBot Credentials File", "type": "string", "placeholder": "~/.config/switchbot-ir/credentials.json" }
+        }
+      },
+      "avr": {
+        "title": "AVR (Denon HTTP, main zone)", "type": "object",
+        "properties": {
+          "host": { "title": "IP Address", "type": "string", "format": "ipv4" },
+          "port": { "title": "HTTP Port", "type": "integer", "default": 8080 },
+          "inputCode": { "title": "Input Code", "type": "string", "default": "BD" }
+        }
+      },
+      "recorder": {
+        "title": "Recorder (Sony BDZ over LAN)", "type": "object",
+        "properties": {
+          "host": { "title": "IP Address", "type": "string", "format": "ipv4" },
+          "mac": { "title": "MAC Address (Wake-on-LAN)", "type": "string" },
+          "broadcast": { "title": "Broadcast Address", "type": "string", "format": "ipv4" }
+        }
+      }
+    }
+  }
+}
