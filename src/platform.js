@@ -4,14 +4,16 @@
 // sequence once; a press while one is running is refused. The buttons fall
 // back to off after a moment: they report "accepted", not the theater's state.
 
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { AdcpClient } from './drivers/adcp-client.js';
 import { BdzRecorder } from './drivers/bdz.js';
 import { DenonAvr } from './drivers/denon-api.js';
+import { SomfyGateway } from './drivers/somfy.js';
 import { DEFAULT_CREDENTIALS_PATH, SwitchBotApi, loadCredentials } from './drivers/switchbot-api.js';
-import { loadSecretFile } from './secrets.js';
-import { BusyError, DEFAULT_SEQUENCES, SequenceRunner } from './sequence.js';
+import { expandHome, loadSecretFile } from './secrets.js';
+import { BusyError, SequenceRunner, defaultSequences } from './sequence.js';
 
 export const PLUGIN_NAME = 'homebridge-theater-sequence';
 export const PLATFORM_NAME = 'TheaterSequence';
@@ -25,8 +27,11 @@ const DEFAULT_TIMING = {
   avrInputMs: 5000, // input change measured ~1.2 s
   recorderWakeMs: 30000, // Wake-on-LAN -> PowerInternalOn measured ~8 s
   recorderPowerMs: 20000,
+  shutterAcceptMs: 10000, // /exec/apply -> IN_PROGRESS measured ~1 s
 };
 const DEFAULT_ADCP_PASSWORD_FILE = '~/.config/theater-sequence/adcp.json';
+const DEFAULT_SOMFY_TOKEN_FILE = '~/.config/theater-sequence/somfy.json';
+const DEFAULT_SOMFY_CA_FILE = '~/.config/theater-sequence/overkiz-root-ca-2048.crt';
 
 export class TheaterSequencePlatform {
   constructor(log, config, api, { driverFactory } = {}) {
@@ -67,7 +72,15 @@ export class TheaterSequencePlatform {
     need(c.avr, ['host', 'inputCode'], 'avr');
     need(c.recorder, ['host', 'mac', 'broadcast'], 'recorder');
     const { password } = loadSecretFile(c.projector.passwordFile || DEFAULT_ADCP_PASSWORD_FILE, ['password']);
+    let somfy;
+    if (c.shutter) {
+      need(c.shutter, ['host', 'pin', 'deviceURL'], 'shutter');
+      const { token } = loadSecretFile(c.shutter.tokenFile || DEFAULT_SOMFY_TOKEN_FILE, ['token']);
+      const ca = fs.readFileSync(expandHome(c.shutter.caFile || DEFAULT_SOMFY_CA_FILE));
+      somfy = new SomfyGateway({ host: c.shutter.host, pin: c.shutter.pin, token: String(token), ca });
+    }
     return {
+      somfy,
       adcp: new AdcpClient({ host: c.projector.host, port: c.projector.port || 53595, password, timeout: 5000 }),
       // screen.apiBase and recorder.port exist for testing against local fakes; not in the schema.
       switchbot: new SwitchBotApi(loadCredentials(c.screen.credentialsFile || DEFAULT_CREDENTIALS_PATH),
@@ -90,7 +103,7 @@ export class TheaterSequencePlatform {
       drivers,
       config: this.config,
       timing: { ...DEFAULT_TIMING, ...(this.config.timing || {}) },
-      sequences: { ...DEFAULT_SEQUENCES, ...(this.config.sequences || {}) },
+      sequences: { ...defaultSequences({ shutter: !!drivers.somfy }), ...(this.config.sequences || {}) },
       resultFile: path.join(this.api.user.storagePath(), 'theater-sequence-last.json'),
     });
 

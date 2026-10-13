@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 
-import { avrInput, avrPower, projectorPower, recorderPower, screenButton } from './steps.js';
+import { avrInput, avrPower, projectorPower, recorderPower, screenButton, shutterCommand } from './steps.js';
 
 export const STEPS = {
   'screen-down': (ctx) => screenButton(ctx, ctx.config.screen.downButton),
@@ -21,16 +21,24 @@ export const STEPS = {
   'avr-input': (ctx) => avrInput(ctx, ctx.config.avr.inputCode),
   'recorder-on': (ctx) => recorderPower(ctx, true),
   'recorder-off': (ctx) => recorderPower(ctx, false),
+  'shutter-close': (ctx) => shutterCommand(ctx, 'close'),
+  'shutter-open': (ctx) => shutterCommand(ctx, 'open'),
 };
 
-// Order decided on 2026-09-25 (shutters are not part of it yet). The screen
-// goes first both ways: it is the most visible sign the sequence was accepted,
-// and it no longer waits behind the projector's cool-down. On start, the AVR
-// and recorder need not wait for the projector's ~20 s warm-up (2026-09-26).
+// Order decided on 2026-09-25. The screen goes first both ways: it is the most
+// visible sign the sequence was accepted, and it no longer waits behind the
+// projector's cool-down. On start, the AVR and recorder need not wait for the
+// projector's ~20 s warm-up (2026-09-26). The shutter follows the screen
+// (2026-10-13) and is only part of the defaults when it is configured.
 export const DEFAULT_SEQUENCES = {
-  start: ['screen-down', 'projector-on&', 'avr-on', 'recorder-on', 'avr-input'],
-  stop: ['screen-up', 'recorder-off', 'avr-off', 'projector-off'],
+  start: ['screen-down', 'shutter-close', 'projector-on&', 'avr-on', 'recorder-on', 'avr-input'],
+  stop: ['screen-up', 'shutter-open', 'recorder-off', 'avr-off', 'projector-off'],
 };
+
+export function defaultSequences({ shutter = false } = {}) {
+  const keep = (s) => shutter || !s.startsWith('shutter-');
+  return Object.fromEntries(Object.entries(DEFAULT_SEQUENCES).map(([k, v]) => [k, v.filter(keep)]));
+}
 
 // "projector-on&" -> { step: 'projector-on', wait: false }
 export function parseStep(written) {

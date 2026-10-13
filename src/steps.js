@@ -64,6 +64,15 @@ export async function screenButton(ctx, button) {
   return { outcome: 'accepted', detail: `SwitchBot accepted "${button}"` };
 }
 
+// ---- shutter (Somfy gateway, RTS) ---------------------------------------------
+
+export async function shutterCommand(ctx, name) {
+  const { somfy, timing, config } = ctx;
+  const r = await somfy.command(config.shutter.deviceURL, name, { acceptMs: timing.shutterAcceptMs });
+  // RTS is one-way: the gateway's later COMPLETED is a fixed timer (~30 s), not arrival.
+  return { outcome: 'accepted', detail: `Somfy gateway transmitting "${name}" (${r.state}); RTS reports no position` };
+}
+
 // ---- AVR (Denon, main zone only) -------------------------------------------
 
 export async function avrPower(ctx, on) {

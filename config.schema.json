@@ -42,6 +42,16 @@
           "mac": { "title": "MAC Address (Wake-on-LAN)", "type": "string" },
           "broadcast": { "title": "Broadcast Address", "type": "string", "format": "ipv4" }
         }
+      },
+      "shutter": {
+        "title": "Shutter (Somfy TaHoma / Connexoon, local API)", "type": "object",
+        "properties": {
+          "host": { "title": "Gateway IP Address", "type": "string", "format": "ipv4" },
+          "pin": { "title": "Gateway PIN", "type": "string", "placeholder": "1234-5678-9012", "description": "Used as the TLS name gateway-<pin>.local the certificate is issued for." },
+          "deviceURL": { "title": "Shutter deviceURL", "type": "string", "placeholder": "rts://1234-5678-9012/12345678", "description": "From GET /setup/devices." },
+          "tokenFile": { "title": "Token File", "type": "string", "placeholder": "~/.config/theater-sequence/somfy.json", "description": "JSON {\"token\": \"...\"} from the TaHoma app's Developer Mode, chmod 600." },
+          "caFile": { "title": "Overkiz Root CA File", "type": "string", "placeholder": "~/.config/theater-sequence/overkiz-root-ca-2048.crt", "description": "https://ca.overkiz.com/overkiz-root-ca-2048.crt — the gateway certificate is verified against it." }
+        }
       }
     }
   }

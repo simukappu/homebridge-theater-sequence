@@ -232,9 +232,17 @@ function fullConfig(dir, write) {
   };
 }
 
+test('shutter configured but its token file is missing: nothing published', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'theater-somfy-'));
+  const cfg = { ...fullConfig(dir, true), shutter: { host: '192.0.2.5', pin: '0000-0000-0000', deviceURL: 'rts://0000-0000-0000/1', tokenFile: path.join(dir, 'missing.json') } };
+  const t = await launch({ real: true, config: cfg });
+  assert.ok(t.lines.some(([l, m]) => l === 'error' && /secrets file not found/.test(m)));
+  assert.equal(t.api.registered.length, 0);
+});
+
 test('SequenceRunner rejects unknown steps in configured sequences', () => {
-  assert.throws(() => new SequenceRunner({ log: {}, drivers: {}, config: {}, timing: FAST_TIMING, sequences: { start: ['shutter-close'] } }), /unknown step "shutter-close"/);
-  assert.throws(() => new SequenceRunner({ log: {}, drivers: {}, config: {}, timing: FAST_TIMING, sequences: { start: ['shutter-close&'] } }), /unknown step "shutter-close&"/);
+  assert.throws(() => new SequenceRunner({ log: {}, drivers: {}, config: {}, timing: FAST_TIMING, sequences: { start: ['garage-open'] } }), /unknown step "garage-open"/);
+  assert.throws(() => new SequenceRunner({ log: {}, drivers: {}, config: {}, timing: FAST_TIMING, sequences: { start: ['garage-open&'] } }), /unknown step "garage-open&"/);
   assert.doesNotThrow(() => new SequenceRunner({ log: {}, drivers: {}, config: {}, timing: FAST_TIMING, sequences: { start: ['projector-on&'] } }));
   assert.ok(new BusyError('start').message.includes('start'));
 });
