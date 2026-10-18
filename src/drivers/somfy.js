@@ -4,9 +4,10 @@
 // issued by the Overkiz root CA (verified, never skipped).
 //
 // Only "open" and "close" can be sent. With an RTS (one-way radio) shutter the
-// gateway cannot know where the shutter is: measured on a Connexoon on
-// 2026-10-13, an execution went IN_PROGRESS ~1 s after /exec/apply and
-// COMPLETED ~31.5 s later, while the shutter itself had finished in 5-10 s —
+// gateway cannot know where the shutter is: measured on a Connexoon
+// (2026-10-18, six runs), an execution goes IN_PROGRESS ~0.9 s after
+// /exec/apply and COMPLETED 30.7-30.9 s after it for both open and close,
+// while the shutter itself stops after 15.5-16 s —
 // COMPLETED is the gateway's own timer, not arrival. So callers treat
 // IN_PROGRESS as "the gateway is transmitting" and do not wait for COMPLETED.
 

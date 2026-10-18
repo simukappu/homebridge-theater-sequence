@@ -1,7 +1,7 @@
 // Somfy gateway driver and the shutter steps, against a fake https.request that
-// reproduces a Connexoon measured on 2026-10-13: /exec/apply answers with an
-// execId, the execution is IN_PROGRESS about 1 s later and COMPLETED only
-// ~30 s later (a gateway timer: the RTS shutter had long finished).
+// reproduces a Connexoon measured on 2026-10-13 and 2026-10-18: /exec/apply
+// answers with an execId, the execution is IN_PROGRESS about 1 s later and
+// COMPLETED only ~31 s later (a gateway timer: the RTS shutter stops at ~16 s).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
