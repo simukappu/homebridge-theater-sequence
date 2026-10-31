@@ -23,13 +23,13 @@ Use it only with devices you own. It sends power and input commands to devices o
 
 ## Rules
 
-- **Read first, send at most once, never retry.** A step already at its target sends nothing (`already`). Arrival is polled with a per-step timeout.
-- **Toggles are only sent when the state is known.** The recorder's `POWER` key is a toggle (that is what TV SideView sends for both on and off), so it is sent only after reading `powerstatus`.
-- **The AVR input is never sent in standby**: on the AVC-X6700H that powers the zone on without changing the input.
+- **Send at most once, never retry.** Arrival is polled with a per-step timeout; reads may repeat, commands do not.
+- **Whether a read gates the send depends on the command.** A command that names the target state is sent once every time, and the read only confirms it: the AVR's `ZMON` / `ZMOFF` and `SI<code>`, the screen's IR buttons and the shutter's `open` / `close`. A stale read can then only delay the confirmation; it cannot skip the step and log a success. A toggle is sent only after a read says it is needed: the recorder's `POWER` key (what TV SideView sends for both on and off) is sent only after reading `powerstatus`, since a wrong read would switch it back. The projector, whose `power_status` is read first-hand over the same ADCP connection, still sends nothing when it is already at its target (`already`).
+- **The AVR input is never sent in standby**: on the AVC-X6700H that powers the zone on without changing the input. Selecting the input it is already on is a no-op there (no picture or sound dropout). An AVR read only from its HTTP status page, which can lag by minutes, counts as `accepted`, not `reached`; telnet (port 23) is the first-hand read.
 - **The shutter step does not wait for the gateway's COMPLETED.** On a Connexoon, an RTS execution goes `IN_PROGRESS` ~0.9 s after `/exec/apply` and `COMPLETED` 30.7–30.9 s after it, every time and for both `open` and `close` (six runs), while the shutter itself stops after 15.5–16 s (stopwatch): COMPLETED is the gateway's timer, not arrival. The step is `accepted` at `IN_PROGRESS` and `failed` on `FAILED` or if that does not come within `shutterAcceptMs`. Only `open` and `close` can be sent; the gateway certificate is verified against the Overkiz root CA.
 - **A failed step does not stop the sequence**; it is recorded, and later steps check their own preconditions.
 - **One sequence at a time.** A press while one runs is refused (Matter `Busy`, HomeKit `RESOURCE_BUSY`).
-- **The button answers when the sequence is accepted**, not when it ends (a sequence takes 10–60 s, longer than controllers wait). Results: log lines per step and `theater-sequence-last.json` in the Homebridge storage directory. Step outcomes: `reached`, `already`, `accepted` (IR), `skipped`, `failed`.
+- **The button answers when the sequence is accepted**, not when it ends (a sequence takes 10–60 s, longer than controllers wait). Results: log lines per step and `theater-sequence-last.json` in the Homebridge storage directory. Step outcomes: `reached`, `already`, `accepted` (sent, arrival not read first-hand: IR, RTS, or the AVR's HTTP page), `skipped`, `failed`.
 
 ## Setup
 

@@ -1,9 +1,13 @@
-// One function per step. Each reads the device state first, sends at most one
-// command (never retried), and confirms arrival where the device can report it.
+// One function per step. Each sends at most one command (never retried) and
+// confirms arrival where the device can report it. Whether a read comes before
+// the send depends on the command: one that names the target state (ZMON,
+// SI<code>, IR "down") is sent every time and reads only confirm it; a toggle
+// (the recorder's POWER) is sent only after a read says it is needed.
 // A step returns { outcome, detail } with outcome one of:
 //   reached   sent, and the device reported the target state
 //   already   the device was already there; nothing sent
-//   accepted  sent and accepted, but the device cannot report arrival (IR)
+//   accepted  sent and accepted, but arrival was not reported first-hand
+//             (IR, RTS, or an AVR value read only from its lagging HTTP page)
 //   skipped   deliberately not sent (unknown/unsafe state, missing precondition)
 // and throws for failures (not delivered, or not confirmed in time).
 
@@ -75,27 +79,17 @@ export async function shutterCommand(ctx, name) {
 
 // ---- AVR (Denon, main zone only) -------------------------------------------
 
-export async function avrPower(ctx, on) {
-  const { denon, timing } = ctx;
-  let s = await denon.status();
-  const isOn = (v) => v.power === 'ON';
-  if (isOn(s) === on) return { outcome: 'already', detail: `main zone ${s.power}` };
-  await denon.setMainZonePower(on);
-  const w = await waitFor(() => denon.status(), (v) => isOn(v) === on, { timeoutMs: timing.avrPowerMs, pollMs: timing.pollMs });
-  if (!w.ok) throw new Error(`main zone not ${on ? 'ON' : 'off'} after ${timing.avrPowerMs} ms (${lastSeen(w, (v) => `main zone ${v?.power}`)})`);
-  if (on) ctx.avrPoweredOnAt = Date.now();
-  return { outcome: 'reached', detail: `main zone ${w.value.power}` };
-}
-
+// ZMON / ZMOFF and SI<code> name the target state, so they are sent once every
+// time, even when a read says the AVR is already there: a stale read can then
+// only delay the confirmation, not skip the command and log a success.
+//
 // The HTTP status page can lag behind the AVR (seen 2026-09-25: NET for 3+
-// minutes after the AVR had switched to BD), so an HTTP value that already
-// equals the target is re-checked over telnet before it is believed — both for
-// "already there" (else nothing would be sent) and for "reached". A telnet
-// answer overrides HTTP; if telnet is unavailable, HTTP stands and the reason
-// is kept in the detail.
-async function readAvr(denon, code, notes) {
+// minutes after the AVR had switched to BD), so an HTTP value that equals the
+// target is re-checked over telnet. If telnet is unavailable, the HTTP value is
+// all there is: the step is then recorded as accepted, not reached.
+async function readAvr(denon, matches, notes) {
   const v = await denon.status();
-  if (v.via !== 'http' || v.input !== code) return v;
+  if (v.via !== 'http' || !matches(v)) return v;
   try {
     return { ...(await denon.telnetStatus()), via: 'telnet' };
   } catch (e) {
@@ -105,23 +99,40 @@ async function readAvr(denon, code, notes) {
 }
 
 const viaText = (v, notes) => (v.via === 'http' ? `http; ${notes.telnet ?? v.telnetError ?? 'telnet unavailable'}` : (v.via ?? '?'));
+const confirmed = (v) => (v.via === 'telnet' ? 'reached' : 'accepted');
+
+export async function avrPower(ctx, on) {
+  const { denon, timing } = ctx;
+  const notes = {};
+  const isOn = (v) => v.power === 'ON';
+  // Read only to know whether the AVR is waking up (and needs to settle before
+  // an input is selected); the command is sent either way.
+  const before = await denon.status();
+  await denon.setMainZonePower(on);
+  const w = await waitFor(() => readAvr(denon, (v) => isOn(v) === on, notes), (v) => isOn(v) === on, { timeoutMs: timing.avrPowerMs, pollMs: timing.pollMs });
+  if (!w.ok) throw new Error(`main zone not ${on ? 'ON' : 'off'} after ${timing.avrPowerMs} ms (${lastSeen(w, (v) => `main zone ${v?.power}`)})`);
+  if (on && !(isOn(before) && before.via === 'telnet')) ctx.avrPoweredOnAt = Date.now();
+  return { outcome: confirmed(w.value), detail: `main zone ${w.value.power}, was ${before.power} (read via ${viaText(w.value, notes)})` };
+}
 
 export async function avrInput(ctx, code) {
   const { denon, timing } = ctx;
   const notes = {};
-  let s = await readAvr(denon, code, notes);
-  // In standby, SI<code> powers the zone on without changing the input.
+  // The one read that gates the send: in standby, SI<code> powers the zone on
+  // without changing the input.
+  const s = await denon.status();
   if (s.power !== 'ON') return { outcome: 'skipped', detail: `main zone is ${s.power}; input not sent` };
-  if (s.input === code) return { outcome: 'already', detail: `input ${code} (read via ${viaText(s, notes)})` };
   // An AVR that was switched on moments ago may not take the selection yet.
   if (ctx.avrPoweredOnAt) {
     const wait = ctx.avrPoweredOnAt + timing.avrSettleMs - Date.now();
     if (wait > 0) await sleep(wait);
   }
+  // Selecting the input it is already on is a no-op on the AVC-X6700H: no
+  // telnet event, no picture or sound dropout (checked 2026-10-31).
   await denon.selectInput(code);
-  const w = await waitFor(() => readAvr(denon, code, notes), (v) => v.input === code, { timeoutMs: timing.avrInputMs, pollMs: timing.pollMs });
+  const w = await waitFor(() => readAvr(denon, (v) => v.input === code, notes), (v) => v.input === code, { timeoutMs: timing.avrInputMs, pollMs: timing.pollMs });
   if (!w.ok) throw new Error(`input not ${code} after ${timing.avrInputMs} ms (${lastSeen(w, (v) => `input ${v?.input} via ${v?.via ?? '?'}`)})`);
-  return { outcome: 'reached', detail: `input ${code} (read via ${viaText(w.value, notes)})` };
+  return { outcome: confirmed(w.value), detail: `input ${code}, was ${s.input} (read via ${viaText(w.value, notes)})` };
 }
 
 // ---- recorder (Sony BDZ over LAN) --------------------------------------------

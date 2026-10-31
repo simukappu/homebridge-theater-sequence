@@ -1,7 +1,7 @@
 {
   "name": "homebridge-theater-sequence",
   "displayName": "Theater Start/Stop Sequence",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run a home theater's start/stop sequence on the Homebridge host — projector (Sony ADCP), screen (SwitchBot IR), AVR (Denon HTTP), recorder (Sony BDZ over LAN) — confirming each step, triggered from Alexa (Matter) or iPhone (HomeKit).",
   "type": "module",
   "main": "index.js",

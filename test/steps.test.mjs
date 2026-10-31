@@ -73,16 +73,17 @@ test('AVR power on then input BD: ZMON, readback, settle, SIBD, readback', async
   assert.equal(denon.input, 'BD');
 });
 
-test('AVR input read via HTTP is re-checked over telnet; telnet disagreeing keeps it unconfirmed', async () => {
+test('AVR input read via HTTP is re-checked over telnet; HTTP alone is only accepted', async () => {
   // HTTP says BD (e.g. stale from earlier), telnet says the input never changed.
   const stale = fakeDenon({ power: 'ON', input: 'NET', via: 'http', httpInput: 'BD' });
   stale.selectInput = async (code) => { stale.sent.push(`SI${code}`); }; // AVR ignores it
   await assert.rejects(avrInput(ctx({ denon: stale }), 'BD'), /input not BD .*via telnet/);
   assert.deepEqual(stale.sent, ['SIBD'], 'sent despite the stale HTTP "BD", and not re-sent');
-  // Telnet unavailable: the HTTP value stands, and the reason is recorded.
+  // Telnet unavailable: the HTTP value is all there is, so the step is
+  // accepted (sent, arrival not read first-hand), and the reason is recorded.
   const busy = fakeDenon({ power: 'ON', input: 'NET', via: 'http', telnet: false });
   const r = await avrInput(ctx({ denon: busy }), 'BD');
-  assert.equal(r.outcome, 'reached');
+  assert.equal(r.outcome, 'accepted');
   assert.match(r.detail, /read via http; telnet unavailable: connect ECONNREFUSED/);
 });
 
@@ -94,12 +95,36 @@ test('AVR input while the main zone is off: skipped, nothing sent (SI would powe
   assert.equal(denon.power, 'OFF');
 });
 
-test('AVR already on the input / already off: nothing sent', async () => {
+test('AVR already on the input / already off: the absolute command is still sent once, then confirmed', async () => {
   const on = fakeDenon({ power: 'ON', input: 'BD' });
-  assert.equal((await avrInput(ctx({ denon: on }), 'BD')).outcome, 'already');
+  const r = await avrInput(ctx({ denon: on }), 'BD');
+  assert.equal(r.outcome, 'reached');
+  assert.match(r.detail, /input BD, was BD \(read via telnet\)/);
   const off = fakeDenon({ power: 'STANDBY' });
-  assert.equal((await avrPower(ctx({ denon: off }), false)).outcome, 'already');
-  assert.deepEqual([...on.sent, ...off.sent], []);
+  assert.equal((await avrPower(ctx({ denon: off }), false)).outcome, 'reached');
+  assert.deepEqual([...on.sent, ...off.sent], ['SIBD', 'ZMOFF']);
+});
+
+test('a stale HTTP input equal to the target no longer skips the command', async () => {
+  // HTTP says BD, the AVR is really on NET and telnet is down: before, this was
+  // logged as already with nothing sent. Now SIBD goes out once and the step
+  // is only accepted, since nothing first-hand confirmed it.
+  const denon = fakeDenon({ power: 'ON', input: 'NET', via: 'http', httpInput: 'BD', telnet: false });
+  const r = await avrInput(ctx({ denon }), 'BD');
+  assert.equal(r.outcome, 'accepted');
+  assert.deepEqual(denon.sent, ['SIBD']);
+  // The stale HTTP "BD" matched before the AVR itself had switched: this is the
+  // case an accepted (not reached) outcome is there for.
+});
+
+test('AVR power on: settles before the input only if it was not on (read over telnet)', async () => {
+  const wasOn = ctx({ denon: fakeDenon({ power: 'ON', input: 'NET' }) });
+  assert.equal((await avrPower(wasOn, true)).outcome, 'reached');
+  assert.equal(wasOn.avrPoweredOnAt, undefined, 'already on: no settle wait');
+  assert.deepEqual(wasOn.denon.sent, ['ZMON'], 'ZMON is sent anyway');
+  const wasOff = ctx({ denon: fakeDenon() });
+  await avrPower(wasOff, true);
+  assert.equal(typeof wasOff.avrPoweredOnAt, 'number');
 });
 
 // ---- recorder ------------------------------------------------------------------
